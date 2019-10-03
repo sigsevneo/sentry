@@ -41,6 +41,7 @@ aggregation_defs = {
     # Only makes sense with WITH TOTALS, returns 1 for an individual group.
     "total": ["uniq", "issue"],
 }
+
 issue_only_fields = set(
     [
         "query",
@@ -50,8 +51,8 @@ issue_only_fields = set(
         "unassigned",
         "subscribed_by",
         "active_at",
-        "first_release",
-        "first_seen",
+        # "first_release",
+        # "first_seen",
     ]
 )
 
@@ -284,59 +285,60 @@ class SnubaSearchBackend(SearchBackend):
     ):
 
         # TODO: It's possible `first_release` could be handled by Snuba.
-        if environments is not None:
-            environment_ids = [environment.id for environment in environments]
-            group_queryset = group_queryset.filter(
-                groupenvironment__environment_id__in=environment_ids
-            )
-            group_queryset = QuerySetBuilder(
-                {
-                    "first_release": QCallbackCondition(
-                        lambda version: Q(
-                            # if environment(s) are selected, we just filter on the group
-                            # environment's first_release attribute.
-                            groupenvironment__first_release__organization_id=projects[
-                                0
-                            ].organization_id,
-                            groupenvironment__first_release__version=version,
-                            groupenvironment__environment_id__in=environment_ids,
-                        )
-                    ),
-                    "first_seen": ScalarCondition(
-                        "groupenvironment__first_seen",
-                        {"groupenvironment__environment_id__in": environment_ids},
-                    ),
-                }
-            ).build(group_queryset, search_filters)
-        else:
-            group_queryset = QuerySetBuilder(
-                {
-                    "first_release": QCallbackCondition(
-                        lambda release_version: Q(
-                            # if no specific environments are supplied, we either choose any
-                            # groups/issues whose first release matches the given release_version,
-                            Q(
-                                first_release_id__in=Release.objects.filter(
-                                    version=release_version,
-                                    organization_id=projects[0].organization_id,
-                                )
-                            )
-                            |
-                            # or we choose any groups whose first occurrence in any environment and the latest release at
-                            # the time of the groups' first occurrence matches the given
-                            # release_version
-                            Q(
-                                id__in=GroupEnvironment.objects.filter(
-                                    first_release__version=release_version,
-                                    first_release__organization_id=projects[0].organization_id,
-                                    environment__organization_id=projects[0].organization_id,
-                                ).values_list("group_id")
-                            )
-                        )
-                    ),
-                    "first_seen": ScalarCondition("first_seen"),
-                }
-            ).build(group_queryset, search_filters)
+        # if environments is not None:
+        #     environment_ids = [environment.id for environment in environments]
+        #     group_queryset = group_queryset.filter(
+        #         groupenvironment__environment_id__in=environment_ids
+        #     )
+        #     group_queryset = QuerySetBuilder(
+        #         {
+        #             "first_release": QCallbackCondition(
+        #                 lambda version: Q(
+        #                     # if environment(s) are selected, we just filter on the group
+        #                     # environment's first_release attribute.
+        #                     groupenvironment__first_release__organization_id=projects[
+        #                         0
+        #                     ].organization_id,
+        #                     groupenvironment__first_release__version=version,
+        #                     groupenvironment__environment_id__in=environment_ids,
+        #                 )
+        #             ),
+        #             "first_seen": ScalarCondition(
+        #                 "groupenvironment__first_seen",
+        #                 {"groupenvironment__environment_id__in": environment_ids},
+        #             ),
+        #         }
+        #     ).build(group_queryset, search_filters)
+        # else:
+
+        #     group_queryset = QuerySetBuilder(
+        #         {
+        #             "first_release": QCallbackCondition(
+        #                 lambda release_version: Q(
+        #                     # if no specific environments are supplied, we either choose any
+        #                     # groups/issues whose first release matches the given release_version,
+        #                     Q(
+        #                         first_release_id__in=Release.objects.filter(
+        #                             version=release_version,
+        #                             organization_id=projects[0].organization_id,
+        #                         )
+        #                     )
+        #                     |
+        #                     # or we choose any groups whose first occurrence in any environment and the latest release at
+        #                     # the time of the groups' first occurrence matches the given
+        #                     # release_version
+        #                     Q(
+        #                         id__in=GroupEnvironment.objects.filter(
+        #                             first_release__version=release_version,
+        #                             first_release__organization_id=projects[0].organization_id,
+        #                             environment__organization_id=projects[0].organization_id,
+        #                         ).values_list("group_id")
+        #                     )
+        #                 )
+        #             ),
+        #             "first_seen": ScalarCondition("first_seen"),
+        #         }
+        #     ).build(group_queryset, search_filters)
 
         now = timezone.now()
         end = None
@@ -671,6 +673,10 @@ def snuba_search(
         orderby = ["-{}".format(sort_field), "issue"]  # ensure stable sort within the same score
         referrer = "search"
 
+    print ("Sending snuba query args")
+    print ("Conditions:", conditions)
+    print ("Aggregations:", aggregations)
+    print ("Having:", having)
     snuba_results = snuba.raw_query(
         start=start,
         end=end,
