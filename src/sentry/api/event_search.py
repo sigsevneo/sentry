@@ -138,6 +138,22 @@ spaces               = ~r"\ *"
 """
 )
 
+# Create the known set of fields from the issue properties
+# and the transactions and events dataset mapping definitions.
+SEARCH_MAP = {
+    "start": "start",
+    "end": "end",
+    "project_id": "project_id",
+    "first_seen": "first_seen",
+    "last_seen": "last_seen",
+    "times_seen": "times_seen",
+    "status": "groups.status",  #This is a groups property, maybe add to GROUPS_SENRTY_SNUBA_MAP (and define it like TRANSACTIONS_SENTRY_SNUBA_MAP)
+    # TODO(mark) figure out how to safelist aggregate functions/field aliases
+    # so they can be used in conditions
+}
+SEARCH_MAP.update(**DATASETS["transactions"])
+SEARCH_MAP.update(**DATASETS["events"])
+
 
 # Create the known set of fields from the issue properties
 # and the transactions and events dataset mapping definitions.
