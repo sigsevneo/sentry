@@ -819,6 +819,7 @@ def bulk_raw_query(snuba_param_list, referrer=None):
 
     def snuba_query(params):
         query_params, forward, reverse = params
+        print("Sending POST with query params:",query_params)
         try:
             with timer("snuba_query"):
                 return (
@@ -831,6 +832,7 @@ def bulk_raw_query(snuba_param_list, referrer=None):
         except urllib3.exceptions.HTTPError as err:
             raise SnubaError(err)
 
+    print("query_param_list",query_param_list)
     if len(snuba_param_list) > 1:
         query_results = _query_thread_pool.map(snuba_query, query_param_list)
     else:

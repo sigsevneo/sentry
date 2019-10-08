@@ -45,7 +45,7 @@ aggregation_defs = {
 issue_only_fields = set(
     [
         "query",
-        "status",
+        # "status",
         "bookmarked_by",
         "assigned_to",
         "unassigned",
@@ -194,20 +194,20 @@ class SnubaSearchBackend(SearchBackend):
         date_from=None,
         date_to=None,
     ):
-        print ("CAPTURING EXCEPTION!")
-        import sentry_sdk
-        from sentry_sdk.integrations.django import DjangoIntegration
+        # print ("CAPTURING EXCEPTION!")
+        # import sentry_sdk
+        # from sentry_sdk.integrations.django import DjangoIntegration
 
-        sentry_sdk.init(
-            dsn="http://266399490cfb4e6394d51db578e19b9c@dev.getsentry.net:8000/7",
-            integrations=[DjangoIntegration()],
-        )
-        from sentry_sdk import capture_message
+        # sentry_sdk.init(
+        #     dsn="http://266399490cfb4e6394d51db578e19b9c@dev.getsentry.net:8000/7",
+        #     integrations=[DjangoIntegration()],
+        # )
+        # from sentry_sdk import capture_message
 
-        # division_by_zero = 1 / 0
-        capture_message(
-            "CAPTURE MESSAGE! This is an example of an error message, processed by CDC?"
-        )
+        # # division_by_zero = 1 / 0
+        # capture_message(
+        #     "CAPTURE MESSAGE! This is an example of an error message, processed by CDC?"
+        # )
         # import sentry_sdk;
         # from sentry_sdk import capture_message;
         # sentry_sdk.init(dsn='http://8ac75874a33e4f10afaeef699f918f1a@dev.getsentry.net:8000/4')
@@ -233,7 +233,7 @@ class SnubaSearchBackend(SearchBackend):
         )
 
         qs_builder_conditions = {
-            "status": QCallbackCondition(lambda status: Q(status=status)),
+            # "status": QCallbackCondition(lambda status: Q(status=status)),
             "bookmarked_by": QCallbackCondition(
                 lambda user: Q(bookmark_set__project__in=projects, bookmark_set__user=user)
             ),
@@ -659,6 +659,7 @@ def snuba_search(
         ):
             continue
         converted_filter = convert_search_filter_to_snuba_query(search_filter)
+        print("Converted filter:",converted_filter)
 
         # Ensure that no user-generated tags that clashes with aggregation_defs is added to having
         if search_filter.key.name in aggregation_defs and not search_filter.key.is_tag:
@@ -679,7 +680,7 @@ def snuba_search(
     if cursor is not None:
         having.append((sort_field, ">=" if cursor.is_prev else "<=", cursor.value))
 
-    selected_columns = []
+    selected_columns = ["groups.status"] # Only add if we are searching on status or any group field
     if get_sample:
         query_hash = md5(repr(conditions)).hexdigest()[:8]
         selected_columns.append(("cityHash64", ("'{}'".format(query_hash), "issue"), "sample"))
@@ -693,11 +694,24 @@ def snuba_search(
         orderby = ["-{}".format(sort_field), "issue"]
         referrer = "search"
 
+    groupby = ["groups.status"]  #Only add as we need fields from groups table
+    
     print ("Sending snuba query args")
+    print ("Start:", start)
+    print ("End :", end)
+    print ("selected_columns :", selected_columns)
     print ("Conditions:", conditions)
-    print ("Aggregations:", aggregations)
     print ("Having:", having)
+    print ("filter_keys :", filters)
+    print ("Aggregations:", aggregations)
+    print ("orderby:", orderby)
+    print ("referrer:", referrer)
+    print ("limit:", limit)
+    print ("offset:", offset)
+    print ("turbo:", get_sample)
+    print ("groupby:", groupby)
     snuba_results = snuba.raw_query(
+        dataset="groups", #Only send if we are using a groups field
         start=start,
         end=end,
         selected_columns=selected_columns,
@@ -711,8 +725,8 @@ def snuba_search(
         limit=limit,
         offset=offset,
         totals=True,  # Needs to have totals_mode=after_having_exclusive so we get groups matching HAVING only
-        turbo=get_sample,  # Turn off FINAL when in sampling mode
-        sample=1,  # Don't use clickhouse sampling, even when in turbo mode.
+        # turbo=get_sample,  # Turn off FINAL when in sampling mode
+        # sample=1,  # Don't use clickhouse sampling, even when in turbo mode.
     )
     rows = snuba_results["data"]
     total = snuba_results["totals"]["total"]
