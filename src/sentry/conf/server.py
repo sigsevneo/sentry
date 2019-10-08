@@ -104,14 +104,16 @@ MANAGERS = ADMINS
 
 APPEND_SLASH = True
 
-PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), os.pardir))
+PROJECT_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), os.pardir))
 
 # XXX(dcramer): handle case when we've installed from source vs just running
 # this straight out of the repository
 if "site-packages" in __file__:
     NODE_MODULES_ROOT = os.path.join(PROJECT_ROOT, "node_modules")
 else:
-    NODE_MODULES_ROOT = os.path.join(PROJECT_ROOT, os.pardir, os.pardir, "node_modules")
+    NODE_MODULES_ROOT = os.path.join(
+        PROJECT_ROOT, os.pardir, os.pardir, "node_modules")
 
 NODE_MODULES_ROOT = os.path.normpath(NODE_MODULES_ROOT)
 
@@ -451,7 +453,8 @@ BITBUCKET_CONSUMER_SECRET = ""
 VISUALSTUDIO_APP_ID = ""
 VISUALSTUDIO_APP_SECRET = ""
 VISUALSTUDIO_CLIENT_SECRET = ""
-VISUALSTUDIO_SCOPES = ["vso.work_write", "vso.project", "vso.code", "vso.release"]
+VISUALSTUDIO_SCOPES = ["vso.work_write",
+                       "vso.project", "vso.code", "vso.release"]
 
 SOCIAL_AUTH_PIPELINE = (
     "social_auth.backends.pipeline.user.get_username",
@@ -578,7 +581,8 @@ CELERY_QUEUES = [
         "events.reprocessing.preprocess_event", routing_key="events.reprocessing.preprocess_event"
     ),
     Queue("events.process_event", routing_key="events.process_event"),
-    Queue("events.reprocessing.process_event", routing_key="events.reprocessing.process_event"),
+    Queue("events.reprocessing.process_event",
+          routing_key="events.reprocessing.process_event"),
     Queue("events.reprocess_events", routing_key="events.reprocess_events"),
     Queue("events.save_event", routing_key="events.save_event"),
     Queue("files.delete", routing_key="files.delete"),
@@ -604,7 +608,8 @@ CELERY_ROUTES = ("sentry.queue.routers.SplitQueueRouter",)
 def create_partitioned_queues(name):
     exchange = Exchange(name, type="direct")
     for num in range(1):
-        CELERY_QUEUES.append(Queue(u"{0}-{1}".format(name, num), exchange=exchange))
+        CELERY_QUEUES.append(
+            Queue(u"{0}-{1}".format(name, num), exchange=exchange))
 
 
 create_partitioned_queues("counters")
@@ -613,7 +618,8 @@ create_partitioned_queues("triggers")
 from celery.schedules import crontab
 
 # XXX: Make sure to register the monitor_id for each job in `SENTRY_CELERYBEAT_MONITORS`!
-CELERYBEAT_SCHEDULE_FILENAME = os.path.join(tempfile.gettempdir(), "sentry-celerybeat")
+CELERYBEAT_SCHEDULE_FILENAME = os.path.join(
+    tempfile.gettempdir(), "sentry-celerybeat")
 CELERYBEAT_SCHEDULE = {
     "check-auth": {
         "task": "sentry.tasks.check_auth",
@@ -1064,7 +1070,8 @@ SENTRY_TAGSTORE = os.environ.get(
 SENTRY_TAGSTORE_OPTIONS = {}
 
 # Search backend
-SENTRY_SEARCH = os.environ.get("SENTRY_SEARCH", "sentry.search.snuba.SnubaSearchBackend")
+SENTRY_SEARCH = os.environ.get(
+    "SENTRY_SEARCH", "sentry.search.snuba.SnubaSearchBackend")
 SENTRY_SEARCH_OPTIONS = {}
 # SENTRY_SEARCH_OPTIONS = {
 #     'urls': ['http://localhost:9200/'],
@@ -1078,7 +1085,10 @@ SENTRY_TSDB_OPTIONS = {}
 SENTRY_NEWSLETTER = "sentry.newsletter.base.Newsletter"
 SENTRY_NEWSLETTER_OPTIONS = {}
 
-SENTRY_EVENTSTREAM = "sentry.eventstream.snuba.SnubaEventStream"
+# CHANGED FOR USING KAFKA / CDC!!!
+# SENTRY_EVENTSTREAM = "sentry.eventstream.snuba.SnubaEventStream"
+SENTRY_EVENTSTREAM = "sentry.eventstream.kafka.KafkaEventStream"
+
 SENTRY_EVENTSTREAM_OPTIONS = {}
 
 # rollups must be ordered from highest granularity to lowest
@@ -1094,7 +1104,8 @@ SENTRY_METRICS_BACKEND = "sentry.metrics.dummy.DummyMetricsBackend"
 SENTRY_METRICS_OPTIONS = {}
 SENTRY_METRICS_SAMPLE_RATE = 1.0
 SENTRY_METRICS_PREFIX = "sentry."
-SENTRY_METRICS_SKIP_INTERNAL_PREFIXES = []  # Order this by most frequent prefixes.
+# Order this by most frequent prefixes.
+SENTRY_METRICS_SKIP_INTERNAL_PREFIXES = []
 
 # URI Prefixes for generating DSN URLs
 # (Defaults to URL_PREFIX by default)
@@ -1326,7 +1337,8 @@ SENTRY_WATCHERS = (
             "--watch",
             u"--config={}".format(
                 os.path.normpath(
-                    os.path.join(PROJECT_ROOT, os.pardir, os.pardir, "webpack.config.js")
+                    os.path.join(PROJECT_ROOT, os.pardir,
+                                 os.pardir, "webpack.config.js")
                 )
             ),
         ],
@@ -1341,7 +1353,7 @@ SENTRY_DEVSERVICES = {
         "volumes": {"redis": {"bind": "/data"}},
     },
     "postgres": {
-        "image": "postgres:9.6-alpine",
+        "image": "cdc_sentry_postgres:latest",
         "ports": {"5432/tcp": 5432},
         "environment": {"POSTGRES_DB": "sentry"},
         "volumes": {"postgres": {"bind": "/var/lib/postgresql/data"}},
