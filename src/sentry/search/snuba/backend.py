@@ -89,8 +89,7 @@ class QCallbackCondition(Condition):
         q = self.callback(value)
         if search_filter.operator not in ("=", "!="):
             raise InvalidSearchQuery(
-                u"Operator {} not valid for search {}".format(
-                    search_filter.operator, search_filter)
+                u"Operator {} not valid for search {}".format(search_filter.operator, search_filter)
             )
         queryset_method = queryset.filter if search_filter.operator == "=" else queryset.exclude
         queryset = queryset_method(q)
@@ -110,8 +109,7 @@ class ScalarCondition(Condition):
         self.extra = extra
 
     def _get_operator(self, search_filter):
-        django_operator = self.OPERATOR_TO_DJANGO.get(
-            search_filter.operator, "")
+        django_operator = self.OPERATOR_TO_DJANGO.get(search_filter.operator, "")
         if django_operator:
             django_operator = "__{}".format(django_operator)
         return django_operator
@@ -120,7 +118,7 @@ class ScalarCondition(Condition):
         django_operator = self._get_operator(search_filter)
         qs_method = queryset.exclude if search_filter.operator == "!=" else queryset.filter
 
-        q_dict = {"{}{}".format(self.field, django_operator)                  : search_filter.value.raw_value}
+        q_dict = {"{}{}".format(self.field, django_operator): search_filter.value.raw_value}
         if self.extra:
             q_dict.update(self.extra)
 
@@ -237,8 +235,7 @@ class SnubaSearchBackend(SearchBackend):
         qs_builder_conditions = {
             "status": QCallbackCondition(lambda status: Q(status=status)),
             "bookmarked_by": QCallbackCondition(
-                lambda user: Q(bookmark_set__project__in=projects,
-                               bookmark_set__user=user)
+                lambda user: Q(bookmark_set__project__in=projects, bookmark_set__user=user)
             ),
             "assigned_to": QCallbackCondition(
                 functools.partial(assigned_to_filter, projects=projects)
@@ -260,8 +257,7 @@ class SnubaSearchBackend(SearchBackend):
             group_queryset, search_filters
         )
         # filter out groups which are beyond the retention period
-        retention = quotas.get_event_retention(
-            organization=projects[0].organization)
+        retention = quotas.get_event_retention(organization=projects[0].organization)
         if retention:
             retention_window_start = timezone.now() - timedelta(days=retention)
         else:
@@ -271,8 +267,7 @@ class SnubaSearchBackend(SearchBackend):
         # for last seen is before the retention window starts, no results
         # exist.)
         if retention_window_start:
-            group_queryset = group_queryset.filter(
-                last_seen__gte=retention_window_start)
+            group_queryset = group_queryset.filter(last_seen__gte=retention_window_start)
 
         # This is a punt because the SnubaSearchBackend (a subclass) shares so much that it
         # seemed better to handle all the shared initialization and then handoff to the
@@ -366,8 +361,7 @@ class SnubaSearchBackend(SearchBackend):
 
         now = timezone.now()
         end = None
-        end_params = filter(
-            None, [date_to, get_search_filter(search_filters, "date", "<")])
+        end_params = filter(None, [date_to, get_search_filter(search_filters, "date", "<")])
         if end_params:
             end = min(end_params)
 
@@ -391,8 +385,7 @@ class SnubaSearchBackend(SearchBackend):
                 ]
             ):
                 group_queryset = group_queryset.order_by("-last_seen")
-                paginator = DateTimePaginator(
-                    group_queryset, "-last_seen", **paginator_options)
+                paginator = DateTimePaginator(group_queryset, "-last_seen", **paginator_options)
                 # When its a simple django-only search, we count_hits like normal
                 return paginator.get_result(limit, cursor, count_hits=count_hits)
 
@@ -400,14 +393,12 @@ class SnubaSearchBackend(SearchBackend):
         # retention date, which may be closer than 90 days in the past, but
         # apparently `retention_window_start` can be None(?), so we need a
         # fallback.
-        retention_date = max(
-            filter(None, [retention_window_start, now - timedelta(days=90)]))
+        retention_date = max(filter(None, [retention_window_start, now - timedelta(days=90)]))
 
         # TODO: We should try and consolidate all this logic together a little
         # better, maybe outside the backend. Should be easier once we're on
         # just the new search filters
-        start_params = [date_from, retention_date,
-                        get_search_filter(search_filters, "date", ">")]
+        start_params = [date_from, retention_date, get_search_filter(search_filters, "date", ">")]
         start = max(filter(None, start_params))
 
         end = max([retention_date, end])
@@ -430,8 +421,7 @@ class SnubaSearchBackend(SearchBackend):
         # clause.
         max_candidates = options.get("snuba.search.max-pre-snuba-candidates")
         too_many_candidates = False
-        candidate_ids = list(group_queryset.values_list(
-            "id", flat=True)[: max_candidates + 1])
+        candidate_ids = list(group_queryset.values_list("id", flat=True)[: max_candidates + 1])
         metrics.timing("snuba.search.num_candidates", len(candidate_ids))
         if not candidate_ids:
             # no matches could possibly be found from this point on
@@ -447,8 +437,7 @@ class SnubaSearchBackend(SearchBackend):
             # want Snuba to do all the filtering/sorting it can and *then* apply
             # this queryset to the results from Snuba, which we call
             # post-filtering.
-            metrics.incr("snuba.search.too_many_candidates",
-                         skip_internal=False)
+            metrics.incr("snuba.search.too_many_candidates", skip_internal=False)
             too_many_candidates = True
             candidate_ids = []
 
@@ -505,8 +494,7 @@ class SnubaSearchBackend(SearchBackend):
                 start=start,
                 end=end,
                 project_ids=[p.id for p in projects],
-                environment_ids=environments and [
-                    environment.id for environment in environments],
+                environment_ids=environments and [environment.id for environment in environments],
                 sort_field=sort_field,
                 limit=sample_size,
                 offset=0,
@@ -544,8 +532,7 @@ class SnubaSearchBackend(SearchBackend):
                 start=start,
                 end=end,
                 project_ids=[p.id for p in projects],
-                environment_ids=environments and [
-                    environment.id for environment in environments],
+                environment_ids=environments and [environment.id for environment in environments],
                 sort_field=sort_field,
                 cursor=cursor,
                 candidate_ids=candidate_ids,
@@ -625,8 +612,7 @@ class SnubaSearchBackend(SearchBackend):
         metrics.timing("snuba.search.num_chunks", num_chunks)
 
         groups = Group.objects.in_bulk(paginator_results.results)
-        paginator_results.results = [groups[k]
-                                     for k in paginator_results.results if k in groups]
+        paginator_results.results = [groups[k] for k in paginator_results.results if k in groups]
 
         return paginator_results
 
@@ -691,14 +677,12 @@ def snuba_search(
         aggregations.append(aggregation_defs[alias] + [alias])
 
     if cursor is not None:
-        having.append(
-            (sort_field, ">=" if cursor.is_prev else "<=", cursor.value))
+        having.append((sort_field, ">=" if cursor.is_prev else "<=", cursor.value))
 
     selected_columns = []
     if get_sample:
         query_hash = md5(repr(conditions)).hexdigest()[:8]
-        selected_columns.append(
-            ("cityHash64", ("'{}'".format(query_hash), "issue"), "sample"))
+        selected_columns.append(("cityHash64", ("'{}'".format(query_hash), "issue"), "sample"))
         sort_field = "sample"
         orderby = [sort_field]
         referrer = "search_sample"

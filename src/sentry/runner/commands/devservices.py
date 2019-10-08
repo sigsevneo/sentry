@@ -23,8 +23,7 @@ def get_or_create(client, thing, name):
     try:
         return getattr(client, thing + "s").get(name)
     except docker.errors.NotFound:
-        click.secho("> Creating '%s' %s" %
-                    (name, thing), err=True, fg="yellow")
+        click.secho("> Creating '%s' %s" % (name, thing), err=True, fg="yellow")
         return getattr(client, thing + "s").create(name)
 
 
@@ -128,15 +127,13 @@ def up(project, exclude):
         for key, value in options["environment"].items():
             options["environment"][key] = value.format(containers=containers)
         if options.pop("pull", False) and options["image"] not in pulled:
-            click.secho("> Pulling image '%s'" %
-                        options["image"], err=True, fg="green")
+            click.secho("> Pulling image '%s'" % options["image"], err=True, fg="green")
             client.images.pull(options["image"])
             pulled.add(options["image"])
         for mount in options.get("volumes", {}).keys():
             if "/" not in mount:
                 get_or_create(client, "volume", project + "_" + mount)
-                options["volumes"][project + "_" +
-                                   mount] = options["volumes"].pop(mount)
+                options["volumes"][project + "_" + mount] = options["volumes"].pop(mount)
         try:
             container = client.containers.get(options["name"])
         except docker.errors.NotFound:
@@ -146,8 +143,7 @@ def up(project, exclude):
             container.remove()
         listening = ""
         if options["ports"]:
-            listening = " (listening: %s)" % ", ".join(
-                map(text_type, options["ports"].values()))
+            listening = " (listening: %s)" % ", ".join(map(text_type, options["ports"].values()))
         click.secho(
             "> Creating '%s' container%s" % (options["name"], listening), err=True, fg="yellow"
         )
@@ -166,9 +162,8 @@ def down(project, service):
 
     for container in client.containers.list(all=True):
         if container.name.startswith(prefix):
-            if not service or container.name[len(prefix):] in service:
-                click.secho("> Removing '%s' container" %
-                            container.name, err=True, fg="red")
+            if not service or container.name[len(prefix) :] in service:
+                click.secho("> Removing '%s' container" % container.name, err=True, fg="red")
                 container.stop()
                 container.remove()
 
@@ -192,17 +187,15 @@ def rm(project, service):
 
     for container in client.containers.list(all=True):
         if container.name.startswith(prefix):
-            if not service or container.name[len(prefix):] in service:
-                click.secho("> Removing '%s' container" %
-                            container.name, err=True, fg="red")
+            if not service or container.name[len(prefix) :] in service:
+                click.secho("> Removing '%s' container" % container.name, err=True, fg="red")
                 container.stop()
                 container.remove()
 
     for volume in client.volumes.list():
         if volume.name.startswith(prefix):
-            if not service or volume.name[len(prefix):] in service:
-                click.secho("> Removing '%s' volume" %
-                            volume.name, err=True, fg="red")
+            if not service or volume.name[len(prefix) :] in service:
+                click.secho("> Removing '%s' volume" % volume.name, err=True, fg="red")
                 volume.remove()
 
     if not service:
@@ -211,6 +204,5 @@ def rm(project, service):
         except docker.errors.NotFound:
             pass
         else:
-            click.secho("> Removing '%s' network" %
-                        network.name, err=True, fg="red")
+            click.secho("> Removing '%s' network" % network.name, err=True, fg="red")
             network.remove()
