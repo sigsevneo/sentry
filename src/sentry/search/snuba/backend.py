@@ -39,7 +39,7 @@ aggregation_defs = {
     # https://github.com/getsentry/sentry/blob/804c85100d0003cfdda91701911f21ed5f66f67c/src/sentry/event_manager.py#L241-L271
     "priority": ["toUInt64(plus(multiply(log(times_seen), 600), last_seen))", ""],
     # Only makes sense with WITH TOTALS, returns 1 for an individual group.
-    "total": ["uniq", "issue"],
+    "total": ["uniq", "events.issue"],
 }
 
 issue_only_fields = set(
@@ -50,7 +50,7 @@ issue_only_fields = set(
         "assigned_to",
         "unassigned",
         "subscribed_by",
-        "active_at",
+        # "active_at",
         # "first_release",
         # "first_seen",
     ]
@@ -250,7 +250,7 @@ class SnubaSearchBackend(SearchBackend):
                     ).values_list("group")
                 )
             ),
-            "active_at": ScalarCondition("active_at"),
+            # "active_at": ScalarCondition("active_at"),
         }
 
         group_queryset = QuerySetBuilder(qs_builder_conditions).build(
@@ -645,7 +645,7 @@ def snuba_search(
         filters["environment"] = environment_ids
 
     if candidate_ids:
-        filters["issue"] = sorted(candidate_ids)
+        filters["events.issue"] = sorted(candidate_ids)
 
     conditions = []
     having = []
@@ -659,7 +659,7 @@ def snuba_search(
         ):
             continue
         converted_filter = convert_search_filter_to_snuba_query(search_filter)
-        print("Converted filter:",converted_filter)
+        print ("Converted filter:", converted_filter)
 
         # Ensure that no user-generated tags that clashes with aggregation_defs is added to having
         if search_filter.key.name in aggregation_defs and not search_filter.key.is_tag:
@@ -680,10 +680,14 @@ def snuba_search(
     if cursor is not None:
         having.append((sort_field, ">=" if cursor.is_prev else "<=", cursor.value))
 
-    selected_columns = ["groups.status"] # Only add if we are searching on status or any group field
+    selected_columns = [
+        "groups.status"
+    ]  # Only add if we are searching on status or any group field
     if get_sample:
         query_hash = md5(repr(conditions)).hexdigest()[:8]
-        selected_columns.append(("cityHash64", ("'{}'".format(query_hash), "issue"), "sample"))
+        selected_columns.append(
+            ("cityHash64", ("'{}'".format(query_hash), "events.issue"), "sample")
+        )
         sort_field = "sample"
         orderby = [sort_field]
         referrer = "search_sample"
@@ -691,11 +695,11 @@ def snuba_search(
         # Get the top matching groups by score, i.e. the actual search results
         # in the order that we want them.
         # ensure stable sort within the same score
-        orderby = ["-{}".format(sort_field), "issue"]
+        orderby = ["-{}".format(sort_field), "events.issue"]
         referrer = "search"
 
-    groupby = ["groups.status"]  #Only add as we need fields from groups table
-    
+    groupby = ["groups.status"]  # Only add as we need fields from groups table
+
     print ("Sending snuba query args")
     print ("Start:", start)
     print ("End :", end)
@@ -711,11 +715,11 @@ def snuba_search(
     print ("turbo:", get_sample)
     print ("groupby:", groupby)
     snuba_results = snuba.raw_query(
-        dataset="groups", #Only send if we are using a groups field
+        dataset="groups",  # Only send if we are using a groups field?
         start=start,
         end=end,
         selected_columns=selected_columns,
-        groupby=["issue"],
+        groupby=["groups.status", "events.issue"],
         conditions=conditions,
         having=having,
         filter_keys=filters,
@@ -734,4 +738,4 @@ def snuba_search(
     if not get_sample:
         metrics.timing("snuba.search.num_result_groups", len(rows))
 
-    return [(row["issue"], row[sort_field]) for row in rows], total
+    return [(row["events.issue"], row[sort_field]) for row in rows], total
