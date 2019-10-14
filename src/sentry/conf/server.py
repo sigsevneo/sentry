@@ -323,6 +323,7 @@ INSTALLED_APPS = (
     "sentry.nodestore",
     "sentry.search",
     "sentry.snuba",
+    # TODO: group all of this under sentry.lang and sentry.plugins
     "sentry.lang.java",
     "sentry.lang.javascript",
     "sentry.lang.native",
