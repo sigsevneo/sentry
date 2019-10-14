@@ -305,7 +305,8 @@ TEMPLATE_CONTEXT_PROCESSORS = (
 
 INSTALLED_APPS = (
     "django.contrib.admin",
-    "django.contrib.auth",
+    # TODO: duplicate application label with sentry.auth, is this safe to remove?
+    #    "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.messages",
     "django.contrib.sessions",
@@ -315,6 +316,7 @@ INSTALLED_APPS = (
     "rest_framework",
     "sentry",
     "sentry.analytics",
+    "sentry.auth",
     "sentry.incidents",
     "sentry.discover",
     "sentry.analytics.events",
@@ -332,7 +334,6 @@ INSTALLED_APPS = (
     "social_auth",
     "sudo",
     "sentry.eventstream",
-    "sentry.auth.providers.google",
     "django.contrib.staticfiles",
 )
 
