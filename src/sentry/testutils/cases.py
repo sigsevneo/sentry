@@ -77,7 +77,7 @@ from sentry.models import (
     WidgetDataSource,
     WidgetDataSourceTypes,
 )
-from sentry.plugins import plugins
+from sentry.plugins.base import plugins
 from sentry.rules import EventState
 from sentry.tagstore.snuba import SnubaTagStorage
 from sentry.utils import json
@@ -108,7 +108,7 @@ class BaseTestCase(Fixtures, Exam):
 
     @before
     def setup_dummy_auth_provider(self):
-        auth.register("dummy", DummyProvider)
+        auth.base.register("dummy", DummyProvider)
         self.addCleanup(auth.unregister, "dummy", DummyProvider)
 
     def tasks(self):

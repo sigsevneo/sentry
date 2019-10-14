@@ -43,7 +43,7 @@ class IPlugin(local, PluggableViewMixin, PluginConfigMixin, PluginStatusMixin):
     control when or how the plugin gets instantiated, nor is it guaranteed that
     it will happen, or happen more than once.
 
-    >>> from sentry.plugins import Plugin  # NOQA
+    >>> from sentry.plugins.base.v1 import Plugin  # NOQA
     >>> class MyPlugin(Plugin):
     >>>     title = 'My Plugin'
     >>>

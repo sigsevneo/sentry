@@ -9,6 +9,6 @@ class PluginsSentryInterfaceTypesAppConfig(AppConfig):
     def ready(self):
         # XXX: this should semantically be .plugins
         from .models import InterfaceTypePlugin
-        from sentry.plugins import register
+        from sentry.plugins.base import register
 
         register(InterfaceTypePlugin)

@@ -3,7 +3,7 @@ from __future__ import absolute_import
 import mock
 from django.core.urlresolvers import reverse
 
-from sentry.plugins import plugins, NotificationPlugin
+from sentry.plugins.base import plugins, NotificationPlugin
 from sentry.models import ProjectOption, AuditLogEntry
 from sentry.testutils import APITestCase
 

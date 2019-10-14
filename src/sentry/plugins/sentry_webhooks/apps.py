@@ -8,6 +8,6 @@ class PluginsSentryWebhooksAppConfig(AppConfig):
 
     def ready(self):
         from .plugin import WebHooksPlugin
-        from sentry.plugins import register
+        from sentry.plugins.base import register
 
         register(WebHooksPlugin)

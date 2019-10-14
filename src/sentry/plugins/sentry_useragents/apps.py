@@ -8,7 +8,7 @@ class PluginsSentryUseragentsAppConfig(AppConfig):
 
     def ready(self):
         from .models import BrowserPlugin, OsPlugin, DevicePlugin
-        from sentry.plugins import register
+        from sentry.plugins.base import register
 
         register(BrowserPlugin)
         register(OsPlugin)

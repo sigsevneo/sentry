@@ -7,6 +7,7 @@ class PluginsAppConfig(AppConfig):
     name = "sentry.plugins"
 
     def ready(self):
-        from sentry.plugins.base import *  # NOQA
-        from sentry.plugins.bases import *  # NOQA
-        from sentry.plugins.interfaces import *  # NOQA
+        pass
+#        from sentry.plugins.base import *  # NOQA
+#        from sentry.plugins.bases import *  # NOQA
+#        from sentry.plugins.interfaces import *  # NOQA

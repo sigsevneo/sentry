@@ -9,6 +9,6 @@ class PluginsSentryMailAppConfig(AppConfig):
     def ready(self):
         # XXX: this should semantically be .plugins
         from .models import MailPlugin
-        from sentry.plugins import register
+        from sentry.plugins.base import register
 
         register(MailPlugin)
