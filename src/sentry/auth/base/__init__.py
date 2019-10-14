@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 
 import sentry.options as options
-from sentry.auth.provider import *  # NOQA
+from sentry.auth.providers.google.provider import GoogleOAuth2Provider
 from sentry.auth.manager import ProviderManager
 from sentry.auth.view import *  # NOQA
 
