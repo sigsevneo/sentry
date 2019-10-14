@@ -324,6 +324,7 @@ INSTALLED_APPS = (
     "sentry.search",
     "sentry.snuba",
     # TODO: group all of this under sentry.lang and sentry.plugins
+    # then all those AppConfigs can be removed.
     "sentry.lang.java",
     "sentry.lang.javascript",
     "sentry.lang.native",
