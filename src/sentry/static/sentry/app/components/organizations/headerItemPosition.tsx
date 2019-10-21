@@ -1,6 +1,4 @@
 import styled from 'react-emotion';
-import {AutoCompleteRoot} from 'app/components/dropdownAutoCompleteMenu';
-import {TimeRangeRoot} from 'app/components/organizations/timeRangeSelector/index';
 
 const HeaderItemPosition = styled('div')<{
   isSpacer?: boolean;
@@ -13,15 +11,10 @@ const HeaderItemPosition = styled('div')<{
   ${p =>
     p.isSpacer &&
     `
-    @media(max-width: ${p.theme.breakpoints[1]}) {
+    @media (max-width: ${p.theme.breakpoints[1]}) {
       display: none;
     }
   `}
-
-  ${AutoCompleteRoot}, ${TimeRangeRoot} {
-    flex: 1;
-    min-width: 0;
-  }
 `;
 
 export default HeaderItemPosition;
