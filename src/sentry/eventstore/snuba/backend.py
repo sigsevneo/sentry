@@ -36,6 +36,7 @@ class SnubaEventStorage(EventStorage):
         cols = self.__get_columns(additional_columns)
 
         result = snuba.raw_query(
+            dataset=snuba.Dataset.Groups,
             selected_columns=cols,
             start=filter.start,
             end=filter.end,
@@ -65,6 +66,7 @@ class SnubaEventStorage(EventStorage):
             return None
 
         result = snuba.raw_query(
+            dataset=snuba.Dataset.Groups,
             selected_columns=cols,
             filter_keys={"event_id": [event_id], "project_id": [project_id]},
             referrer="eventstore.get_event_by_id",
@@ -88,7 +90,8 @@ class SnubaEventStorage(EventStorage):
 
         time_condition = [
             ["timestamp", ">=", event.timestamp],
-            [["timestamp", ">", event.timestamp], ["event_id", ">", event.event_id]],
+            [["timestamp", ">", event.timestamp], [
+                "event_id", ">", event.event_id]],
         ]
         filter.conditions = filter.conditions or []
         filter.conditions.extend(time_condition)
@@ -111,7 +114,8 @@ class SnubaEventStorage(EventStorage):
 
         time_condition = [
             ["timestamp", "<=", event.timestamp],
-            [["timestamp", "<", event.timestamp], ["event_id", "<", event.event_id]],
+            [["timestamp", "<", event.timestamp], [
+                "event_id", "<", event.event_id]],
         ]
         filter.conditions = filter.conditions or []
         filter.conditions.extend(time_condition)

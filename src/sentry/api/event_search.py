@@ -144,34 +144,15 @@ SEARCH_MAP = {
     "start": "start",
     "end": "end",
     "project_id": "project_id",
-    "first_seen": "first_seen",
-    "last_seen": "last_seen",
+    # "first_seen": "first_seen", # added to the groups dataset? with `groups.` prefix
+    # "last_seen": "last_seen", # added to the groups dataset? with `groups.` prefix
     "times_seen": "times_seen",
-    "status": "groups.status",  #This is a groups property, maybe add to GROUPS_SENRTY_SNUBA_MAP (and define it like TRANSACTIONS_SENTRY_SNUBA_MAP)
-    # TODO(mark) figure out how to safelist aggregate functions/field aliases
-    # so they can be used in conditions
-}
-SEARCH_MAP.update(**DATASETS["transactions"])
-SEARCH_MAP.update(**DATASETS["events"])
-
-
-# Create the known set of fields from the issue properties
-# and the transactions and events dataset mapping definitions.
-SEARCH_MAP = {
-    "start": "start",
-    "end": "end",
-    "project_id": "project_id",
-    "first_seen": "first_seen",
-    "last_seen": "last_seen",
-    "times_seen": "times_seen",
-
-    "status": "groups.status", #This is a groups property, maybe add to GROUPS_SENRTY_SNUBA_MAP (and define it like TRANSACTIONS_SENTRY_SNUBA_MAP)
-
     # TODO(mark) figure out how to safelist aggregate functions/field aliases
     # so they can be used in conditions
 }
 SEARCH_MAP.update(**DATASETS[Dataset.Transactions])
 SEARCH_MAP.update(**DATASETS[Dataset.Events])
+SEARCH_MAP.update(**DATASETS[Dataset.Groups])
 
 no_conversion = set(["project_id", "start", "end"])
 
@@ -352,9 +333,11 @@ class SearchVisitor(NodeVisitor):
             if end - start == 1:
                 return children[start]
 
-            result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_OR)
+            result = build_boolean_tree_branch(
+                children, start, end, SearchBoolean.BOOLEAN_OR)
             if result is None:
-                result = build_boolean_tree_branch(children, start, end, SearchBoolean.BOOLEAN_AND)
+                result = build_boolean_tree_branch(
+                    children, start, end, SearchBoolean.BOOLEAN_AND)
 
             return result
 
@@ -379,7 +362,8 @@ class SearchVisitor(NodeVisitor):
             try:
                 search_value = SearchValue(int(search_value.text))
             except ValueError:
-                raise InvalidSearchQuery("Invalid numeric query: %s" % (search_key,))
+                raise InvalidSearchQuery(
+                    "Invalid numeric query: %s" % (search_key,))
             return SearchFilter(search_key, operator, search_value)
         else:
             search_value = SearchValue(
@@ -488,7 +472,8 @@ class SearchVisitor(NodeVisitor):
         return SearchFilter(SearchKey(u"tags[%s]" % (search_key.name)), operator, search_value)
 
     def visit_is_filter(self, node, children):
-        raise InvalidSearchQuery('"is" queries are not supported on this search')
+        raise InvalidSearchQuery(
+            '"is" queries are not supported on this search')
 
     def visit_search_key(self, node, children):
         key = children[0]
@@ -563,7 +548,7 @@ def convert_endpoint_params(params):
 
 
 def convert_search_filter_to_snuba_query(search_filter):
-    print("convert_search_filter_to_snuba_query", search_filter)
+    print ("convert_search_filter_to_snuba_query", search_filter)
     snuba_name = search_filter.key.snuba_name
     value = search_filter.value.value
 
@@ -599,12 +584,21 @@ def convert_search_filter_to_snuba_query(search_filter):
             return [["positionCaseInsensitive", ["message", "'%s'" % (value,)]], operator, 0]
 
     else:
+        print ("Converting filter...", value, snuba_name)
+        special_date_names = ["groups.active_at", "first_seen", "last_seen"]
         value = (
             int(to_timestamp(value)) * 1000
-            if isinstance(value, datetime) and snuba_name != "timestamp"
+            if isinstance(value, datetime)
+            and snuba_name != "timestamp"
+            and snuba_name not in special_date_names
             else value
         )
 
+        if snuba_name in special_date_names:
+            value = value.replace(microsecond=0)
+            value = value.isoformat().replace("+00:00", "")
+
+        print ("value set to:", value)
         # Tags are never null, but promoted tags are columns and so can be null.
         # To handle both cases, use `ifNull` to convert to an empty string and
         # compare so we need to check for empty values.
@@ -630,7 +624,8 @@ def convert_search_filter_to_snuba_query(search_filter):
             is_null_condition = [["isNull", [snuba_name]], "=", 1]
 
         if search_filter.value.is_wildcard():
-            condition = [["match", [snuba_name, "'(?i)%s'" % (value,)]], search_filter.operator, 1]
+            condition = [
+                ["match", [snuba_name, "'(?i)%s'" % (value,)]], search_filter.operator, 1]
         else:
             condition = [snuba_name, search_filter.operator, value]
 
@@ -655,13 +650,15 @@ def get_filter(query=None, params=None):
         try:
             parsed_terms = parse_search_query(query)
         except ParseError as e:
-            raise InvalidSearchQuery(u"Parse error: %r (column %d)" % (e.expr.name, e.column()))
+            raise InvalidSearchQuery(
+                u"Parse error: %r (column %d)" % (e.expr.name, e.column()))
 
     # Keys included as url params take precedent if same key is included in search
     if params is not None:
         parsed_terms.extend(convert_endpoint_params(params))
 
-    kwargs = {"start": None, "end": None, "conditions": [], "project_ids": [], "group_ids": []}
+    kwargs = {"start": None, "end": None, "conditions": [],
+              "project_ids": [], "group_ids": []}
 
     projects = {}
     has_project_term = any(
@@ -716,7 +713,8 @@ VALID_AGGREGATES = {
     "avg": {"snuba_name": "avg", "fields": ["transaction.duration"]},
 }
 
-AGGREGATE_PATTERN = re.compile(r"^(?P<function>[^\(]+)\((?P<column>[a-z\._]*)\)$")
+AGGREGATE_PATTERN = re.compile(
+    r"^(?P<function>[^\(]+)\((?P<column>[a-z\._]*)\)$")
 
 
 def validate_aggregate(field, match):
@@ -728,7 +726,8 @@ def validate_aggregate(field, match):
     column = match.group("column")
     if column not in function_data["fields"] and function_data["fields"] != "*":
         raise InvalidSearchQuery(
-            "Invalid column '%s' in aggregate function '%s'" % (column, function_name)
+            "Invalid column '%s' in aggregate function '%s'" % (
+                column, function_name)
         )
 
 
@@ -820,12 +819,15 @@ def resolve_field_list(fields, snuba_args):
             columns.append("id")
             columns.append("project.id")
         if aggregations and "latest_event" not in fields:
-            aggregations.extend(deepcopy(FIELD_ALIASES["latest_event"]["aggregations"]))
+            aggregations.extend(
+                deepcopy(FIELD_ALIASES["latest_event"]["aggregations"]))
         if aggregations and "project.id" not in columns:
-            aggregations.append(["argMax", ["project_id", "timestamp"], "projectid"])
+            aggregations.append(
+                ["argMax", ["project_id", "timestamp"], "projectid"])
 
     if rollup and columns and not aggregations:
-        raise InvalidSearchQuery("You cannot use rollup without an aggregate field.")
+        raise InvalidSearchQuery(
+            "You cannot use rollup without an aggregate field.")
 
     orderby = snuba_args.get("orderby")
     if orderby:
@@ -873,7 +875,8 @@ def get_reference_event_conditions(snuba_args, event_slug):
     This is a key part of pagination in the event details modal and
     summary graph navigation.
     """
-    field_names = [get_snuba_column_name(field) for field in snuba_args.get("groupby", [])]
+    field_names = [get_snuba_column_name(field)
+                   for field in snuba_args.get("groupby", [])]
     # translate the field names into enum columns
     columns = []
     has_tags = False
@@ -884,7 +887,8 @@ def get_reference_event_conditions(snuba_args, event_slug):
             columns.append(eventstore.Columns(field))
 
     if has_tags:
-        columns.extend([eventstore.Columns.TAGS_KEY, eventstore.Columns.TAGS_VALUE])
+        columns.extend([eventstore.Columns.TAGS_KEY,
+                        eventstore.Columns.TAGS_VALUE])
 
     # Fetch the reference event ensuring the fields in the groupby
     # clause are present.

@@ -10,7 +10,11 @@ from django.db.models import Q
 from django.utils import timezone
 
 from sentry import options, quotas
-from sentry.api.event_search import convert_search_filter_to_snuba_query, InvalidSearchQuery
+from sentry.api.event_search import (
+    convert_search_filter_to_snuba_query,
+    InvalidSearchQuery,
+    TAG_KEY_RE,
+)
 from sentry.api.paginator import DateTimePaginator, SequencePaginator, Paginator
 from sentry.constants import ALLOWED_FUTURE_DELTA
 from sentry.models import Group, Release, GroupEnvironment
@@ -24,22 +28,25 @@ EMPTY_RESULT = Paginator(Group.objects.none()).get_result()
 
 # mapping from query parameter sort name to underlying scoring aggregation name
 sort_strategies = {
-    "date": "last_seen",
+    "date": "events.last_seen",
     "freq": "times_seen",
-    "new": "first_seen",
+    "new": "events.first_seen",
     "priority": "priority",
 }
 
-dependency_aggregations = {"priority": ["last_seen", "times_seen"]}
+dependency_aggregations = {"priority": ["events.last_seen", "times_seen"]}
+
+# TODO(Chris): Prefix for first_seen and last_seen was required - what about times_seen, priority, and total?
+# Figure out how to query these from the front end.
 
 aggregation_defs = {
     "times_seen": ["count()", ""],
-    "first_seen": ["multiply(toUInt64(min(timestamp)), 1000)", ""],
-    "last_seen": ["multiply(toUInt64(max(timestamp)), 1000)", ""],
+    "events.first_seen": ["multiply(toUInt64(min(events.timestamp)), 1000)", ""],
+    "events.last_seen": ["multiply(toUInt64(max(events.timestamp)), 1000)", ""],
     # https://github.com/getsentry/sentry/blob/804c85100d0003cfdda91701911f21ed5f66f67c/src/sentry/event_manager.py#L241-L271
-    "priority": ["toUInt64(plus(multiply(log(times_seen), 600), last_seen))", ""],
+    "priority": ["toUInt64(plus(multiply(log(times_seen), 600), events.last_seen))", ""],
     # Only makes sense with WITH TOTALS, returns 1 for an individual group.
-    "total": ["uniq", "events.issue"],
+    "events.total": ["uniq", "events.issue"],
 }
 
 issue_only_fields = set(
@@ -89,7 +96,8 @@ class QCallbackCondition(Condition):
         q = self.callback(value)
         if search_filter.operator not in ("=", "!="):
             raise InvalidSearchQuery(
-                u"Operator {} not valid for search {}".format(search_filter.operator, search_filter)
+                u"Operator {} not valid for search {}".format(
+                    search_filter.operator, search_filter)
             )
         queryset_method = queryset.filter if search_filter.operator == "=" else queryset.exclude
         queryset = queryset_method(q)
@@ -109,7 +117,8 @@ class ScalarCondition(Condition):
         self.extra = extra
 
     def _get_operator(self, search_filter):
-        django_operator = self.OPERATOR_TO_DJANGO.get(search_filter.operator, "")
+        django_operator = self.OPERATOR_TO_DJANGO.get(
+            search_filter.operator, "")
         if django_operator:
             django_operator = "__{}".format(django_operator)
         return django_operator
@@ -118,7 +127,7 @@ class ScalarCondition(Condition):
         django_operator = self._get_operator(search_filter)
         qs_method = queryset.exclude if search_filter.operator == "!=" else queryset.filter
 
-        q_dict = {"{}{}".format(self.field, django_operator): search_filter.value.raw_value}
+        q_dict = {"{}{}".format(self.field, django_operator)                  : search_filter.value.raw_value}
         if self.extra:
             q_dict.update(self.extra)
 
@@ -197,21 +206,18 @@ class SnubaSearchBackend(SearchBackend):
         # print ("CAPTURING EXCEPTION!")
         # import sentry_sdk
         # from sentry_sdk.integrations.django import DjangoIntegration
+        # from sentry_sdk import capture_message
 
         # sentry_sdk.init(
         #     dsn="http://266399490cfb4e6394d51db578e19b9c@dev.getsentry.net:8000/7",
         #     integrations=[DjangoIntegration()],
+        #     environment='beta',
         # )
-        # from sentry_sdk import capture_message
 
-        # # division_by_zero = 1 / 0
+        # # # division_by_zero = 1 / 0
         # capture_message(
-        #     "CAPTURE MESSAGE! This is an example of an error message, processed by CDC?"
+        #     "BETA EVENT! 1 hour after our staging event!! Wowwee!!"
         # )
-        # import sentry_sdk;
-        # from sentry_sdk import capture_message;
-        # sentry_sdk.init(dsn='http://8ac75874a33e4f10afaeef699f918f1a@dev.getsentry.net:8000/4')
-        # print("captured...")
 
         from sentry.models import Group, GroupStatus, GroupSubscription
 
@@ -233,9 +239,9 @@ class SnubaSearchBackend(SearchBackend):
         )
 
         qs_builder_conditions = {
-            # "status": QCallbackCondition(lambda status: Q(status=status)),
             "bookmarked_by": QCallbackCondition(
-                lambda user: Q(bookmark_set__project__in=projects, bookmark_set__user=user)
+                lambda user: Q(bookmark_set__project__in=projects,
+                               bookmark_set__user=user)
             ),
             "assigned_to": QCallbackCondition(
                 functools.partial(assigned_to_filter, projects=projects)
@@ -250,14 +256,19 @@ class SnubaSearchBackend(SearchBackend):
                     ).values_list("group")
                 )
             ),
+            # "status": QCallbackCondition(lambda status: Q(status=status)),
             # "active_at": ScalarCondition("active_at"),
         }
 
+        print ("Building group_queryset", group_queryset)
+        print ("search filters", search_filters)
         group_queryset = QuerySetBuilder(qs_builder_conditions).build(
             group_queryset, search_filters
         )
+        print (group_queryset)
         # filter out groups which are beyond the retention period
-        retention = quotas.get_event_retention(organization=projects[0].organization)
+        retention = quotas.get_event_retention(
+            organization=projects[0].organization)
         if retention:
             retention_window_start = timezone.now() - timedelta(days=retention)
         else:
@@ -267,7 +278,8 @@ class SnubaSearchBackend(SearchBackend):
         # for last seen is before the retention window starts, no results
         # exist.)
         if retention_window_start:
-            group_queryset = group_queryset.filter(last_seen__gte=retention_window_start)
+            group_queryset = group_queryset.filter(
+                last_seen__gte=retention_window_start)
 
         # This is a punt because the SnubaSearchBackend (a subclass) shares so much that it
         # seemed better to handle all the shared initialization and then handoff to the
@@ -361,7 +373,8 @@ class SnubaSearchBackend(SearchBackend):
 
         now = timezone.now()
         end = None
-        end_params = filter(None, [date_to, get_search_filter(search_filters, "date", "<")])
+        end_params = filter(
+            None, [date_to, get_search_filter(search_filters, "date", "<")])
         if end_params:
             end = min(end_params)
 
@@ -384,8 +397,10 @@ class SnubaSearchBackend(SearchBackend):
                     if sf.key.name not in issue_only_fields.union(["date"])
                 ]
             ):
+                print ("This code is being used.")
                 group_queryset = group_queryset.order_by("-last_seen")
-                paginator = DateTimePaginator(group_queryset, "-last_seen", **paginator_options)
+                paginator = DateTimePaginator(
+                    group_queryset, "-last_seen", **paginator_options)
                 # When its a simple django-only search, we count_hits like normal
                 return paginator.get_result(limit, cursor, count_hits=count_hits)
 
@@ -393,16 +408,22 @@ class SnubaSearchBackend(SearchBackend):
         # retention date, which may be closer than 90 days in the past, but
         # apparently `retention_window_start` can be None(?), so we need a
         # fallback.
-        retention_date = max(filter(None, [retention_window_start, now - timedelta(days=90)]))
+        retention_date = max(
+            filter(None, [retention_window_start, now - timedelta(days=90)]))
 
         # TODO: We should try and consolidate all this logic together a little
         # better, maybe outside the backend. Should be easier once we're on
         # just the new search filters
-        start_params = [date_from, retention_date, get_search_filter(search_filters, "date", ">")]
+        start_params = [date_from, retention_date,
+                        get_search_filter(search_filters, "date", ">")]
+        print ("Getting start_params:", start_params)
         start = max(filter(None, start_params))
+        print ("start is:", start)
 
+        print ("end is:", end)
+        print ("retention_date is:", retention_date)
         end = max([retention_date, end])
-
+        print ("end set is:", end)
         if start == retention_date and end == retention_date:
             # Both `start` and `end` must have been trimmed to `retention_date`,
             # so this entire search was against a time range that is outside of
@@ -421,25 +442,29 @@ class SnubaSearchBackend(SearchBackend):
         # clause.
         max_candidates = options.get("snuba.search.max-pre-snuba-candidates")
         too_many_candidates = False
-        candidate_ids = list(group_queryset.values_list("id", flat=True)[: max_candidates + 1])
+        print ("Getting candidate IDs", group_queryset)
+        # candidate_ids = []
+        candidate_ids = list(group_queryset.values_list(
+            "id", flat=True)[: max_candidates + 1])
+        print ("candidate IDs", candidate_ids)
         metrics.timing("snuba.search.num_candidates", len(candidate_ids))
-        if not candidate_ids:
-            # no matches could possibly be found from this point on
-            metrics.incr("snuba.search.no_candidates", skip_internal=False)
-            return EMPTY_RESULT
-        elif len(candidate_ids) > max_candidates:
-            # If the pre-filter query didn't include anything to significantly
-            # filter down the number of results (from 'first_release', 'query',
-            # 'status', 'bookmarked_by', 'assigned_to', 'unassigned',
-            # 'subscribed_by', 'active_at_from', or 'active_at_to') then it
-            # might have surpassed the `max_candidates`. In this case,
-            # we *don't* want to pass candidates down to Snuba, and instead we
-            # want Snuba to do all the filtering/sorting it can and *then* apply
-            # this queryset to the results from Snuba, which we call
-            # post-filtering.
-            metrics.incr("snuba.search.too_many_candidates", skip_internal=False)
-            too_many_candidates = True
-            candidate_ids = []
+        # if not candidate_ids:
+        #     # no matches could possibly be found from this point on
+        #     metrics.incr("snuba.search.no_candidates", skip_internal=False)
+        #     return EMPTY_RESULT
+        # elif len(candidate_ids) > max_candidates:
+        #     # If the pre-filter query didn't include anything to significantly
+        #     # filter down the number of results (from 'first_release', 'query',
+        #     # 'status', 'bookmarked_by', 'assigned_to', 'unassigned',
+        #     # 'subscribed_by', 'active_at_from', or 'active_at_to') then it
+        #     # might have surpassed the `max_candidates`. In this case,
+        #     # we *don't* want to pass candidates down to Snuba, and instead we
+        #     # want Snuba to do all the filtering/sorting it can and *then* apply
+        #     # this queryset to the results from Snuba, which we call
+        #     # post-filtering.
+        #     metrics.incr("snuba.search.too_many_candidates", skip_internal=False)
+        #     too_many_candidates = True
+        #     candidate_ids = []
 
         sort_field = sort_strategies[sort_by]
         chunk_growth = options.get("snuba.search.chunk-growth-rate")
@@ -494,7 +519,8 @@ class SnubaSearchBackend(SearchBackend):
                 start=start,
                 end=end,
                 project_ids=[p.id for p in projects],
-                environment_ids=environments and [environment.id for environment in environments],
+                environment_ids=environments and [
+                    environment.id for environment in environments],
                 sort_field=sort_field,
                 limit=sample_size,
                 offset=0,
@@ -532,7 +558,8 @@ class SnubaSearchBackend(SearchBackend):
                 start=start,
                 end=end,
                 project_ids=[p.id for p in projects],
-                environment_ids=environments and [environment.id for environment in environments],
+                environment_ids=environments and [
+                    environment.id for environment in environments],
                 sort_field=sort_field,
                 cursor=cursor,
                 candidate_ids=candidate_ids,
@@ -612,7 +639,8 @@ class SnubaSearchBackend(SearchBackend):
         metrics.timing("snuba.search.num_chunks", num_chunks)
 
         groups = Group.objects.in_bulk(paginator_results.results)
-        paginator_results.results = [groups[k] for k in paginator_results.results if k in groups]
+        paginator_results.results = [groups[k]
+                                     for k in paginator_results.results if k in groups]
 
         return paginator_results
 
@@ -649,6 +677,8 @@ def snuba_search(
 
     conditions = []
     having = []
+    extra_aggregations = dependency_aggregations.get(sort_field, [])
+
     for search_filter in search_filters:
         if (
             # Don't filter on issue fields here, they're not available
@@ -659,30 +689,78 @@ def snuba_search(
         ):
             continue
         converted_filter = convert_search_filter_to_snuba_query(search_filter)
+        print ("search_filter:", search_filter)
         print ("Converted filter:", converted_filter)
 
         # Ensure that no user-generated tags that clashes with aggregation_defs is added to having
         if search_filter.key.name in aggregation_defs and not search_filter.key.is_tag:
+            print ("Appending converted filter to having")
             having.append(converted_filter)
         else:
+            print ("Appending converted filter to conditions")
+            # Because we are using the groups dataset, tags (retrieved from the event table) must be prefixed with `events.`.
+            # Other fields, such as first_seen, last_seen, and first_release will come from `groups` if there are no environment filters, and `events` if there are.
+            # Another spot to do this could be the convert_search_filter_to_snuba_query function (event_search.py  ~line 595 where it is returned)
+            # But that may have unintended consequences to it's other usages. So for now, I am doing it here as a "first draft"
+            print (converted_filter[0])
+            if isinstance(converted_filter[0], list) and TAG_KEY_RE.match(
+                converted_filter[0][1][0]
+            ):
+                converted_filter[0][1][0] = "events." + \
+                    converted_filter[0][1][0]
+            elif search_filter.key.name in ["first_seen", "last_seen", "first_release"]:
+                if environment_ids is not None:
+                    table_alias = "events"
+                else:
+                    table_alias = "groups"
+
+                if isinstance(converted_filter[0], list):
+                    print ("Converting converted_filter as list")
+                    converted_filter[0][1][0] = table_alias + \
+                        "." + converted_filter[0][1][0]
+                else:
+                    print ("Converting converted_filter as ... not a list")
+                    converted_filter[0] = table_alias + \
+                        "." + converted_filter[0]
+                    print ("111 converted filter name:", converted_filter[0])
+                    # We can't query on the aggregate functions in WHERE, so we actually want to query on the timestamp.
+                    if (
+                        converted_filter[0] == "events.first_seen"
+                        or converted_filter[0] == "events.last_seen"
+                    ):
+                        converted_filter[0] = "events.timestamp"
+                    print ("222 converted filter name:", converted_filter[0])
+
+                # # Need to add the aggregations (say for events.first_seen and events.last_seen?) so snuba knows what they are.
+                # if aggregation_defs.get(converted_filter[0], None) is not None:
+                #     extra_aggregations.append(converted_filter[0])
+
             conditions.append(converted_filter)
 
-    extra_aggregations = dependency_aggregations.get(sort_field, [])
-    required_aggregations = set([sort_field, "total"] + extra_aggregations)
+    print ("sort_field:", sort_field)
+    print ("extra aggregations:", extra_aggregations)
+    required_aggregations = set(
+        [sort_field, "events.total"] + extra_aggregations)
+    print ("required_aggregations:", required_aggregations)
     for h in having:
         alias = h[0]
         required_aggregations.add(alias)
 
     aggregations = []
+    print ("Required aggregations:", required_aggregations)
+    print ("aggregation_defs:", aggregation_defs)
     for alias in required_aggregations:
         aggregations.append(aggregation_defs[alias] + [alias])
 
     if cursor is not None:
-        having.append((sort_field, ">=" if cursor.is_prev else "<=", cursor.value))
-
-    selected_columns = [
-        "groups.status"
-    ]  # Only add if we are searching on status or any group field
+        having.append(
+            (sort_field, ">=" if cursor.is_prev else "<=", cursor.value))
+    selected_columns = []  # "groups.first_seen"]
+    # selected_columns = [
+    # "groups.status",
+    # "groups.last_seen",
+    # "-groups.last_seen",
+    # ]  # Only add if we are searching on status or any group field??? ONLY IF WE NEED IT!
     if get_sample:
         query_hash = md5(repr(conditions)).hexdigest()[:8]
         selected_columns.append(
@@ -695,10 +773,12 @@ def snuba_search(
         # Get the top matching groups by score, i.e. the actual search results
         # in the order that we want them.
         # ensure stable sort within the same score
-        orderby = ["-{}".format(sort_field), "events.issue"]
+        orderby = ["{}".format(sort_field), "events.issue"]
+        # orderby = ["-{}".format(sort_field), "events.issue"]
         referrer = "search"
 
-    groupby = ["groups.status"]  # Only add as we need fields from groups table
+    # Only add as we need fields from groups table? Should groups.last_seen be events.last_seen if we have env filters? Does that break stuff?
+    groupby = ["events.issue", "groups.first_seen", "groups.status"]
 
     print ("Sending snuba query args")
     print ("Start:", start)
@@ -715,11 +795,11 @@ def snuba_search(
     print ("turbo:", get_sample)
     print ("groupby:", groupby)
     snuba_results = snuba.raw_query(
-        dataset="groups",  # Only send if we are using a groups field?
+        dataset=snuba.Dataset.Groups,
         start=start,
         end=end,
         selected_columns=selected_columns,
-        groupby=["groups.status", "events.issue"],
+        groupby=groupby,
         conditions=conditions,
         having=having,
         filter_keys=filters,
@@ -733,7 +813,7 @@ def snuba_search(
         # sample=1,  # Don't use clickhouse sampling, even when in turbo mode.
     )
     rows = snuba_results["data"]
-    total = snuba_results["totals"]["total"]
+    total = snuba_results["totals"]["events.total"]
 
     if not get_sample:
         metrics.timing("snuba.search.num_result_groups", len(rows))

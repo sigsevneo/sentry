@@ -121,6 +121,16 @@ SENTRY_SNUBA_MAP = {
     "user": "tags[sentry:user]",
 }
 
+GROUPS_SENTRY_SNUBA_MAP = {
+    # general
+    "status": "groups.status",
+    # Is active_at what the user uses on the frontend? I don't know how this works.
+    "active_at": "groups.active_at",
+    "first_seen": "first_seen",
+    "last_seen": "last_seen",
+    "first_release": "first_release",
+}
+
 TRANSACTIONS_SENTRY_SNUBA_MAP = {
     # general
     "id": "event_id",
@@ -163,11 +173,16 @@ TRANSACTIONS_SENTRY_SNUBA_MAP = {
 @unique
 class Dataset(Enum):
     Events = "events"
+    Groups = "groups"
     Transactions = "transactions"
     Outcomes = "outcomes"
 
 
-DATASETS = {Dataset.Events: SENTRY_SNUBA_MAP, Dataset.Transactions: TRANSACTIONS_SENTRY_SNUBA_MAP}
+DATASETS = {
+    Dataset.Events: SENTRY_SNUBA_MAP,
+    Dataset.Transactions: TRANSACTIONS_SENTRY_SNUBA_MAP,
+    Dataset.Groups: GROUPS_SENTRY_SNUBA_MAP,
+}
 
 # Store the internal field names to save work later on.
 DATASET_FIELDS = {
@@ -407,7 +422,8 @@ def detect_dataset(query_args, aliased_conditions=False):
         if isinstance(field[1], six.string_types) and field[1] in transaction_fields:
             return Dataset.Transactions
         if isinstance(field[1], (list, tuple)):
-            is_transaction = [column for column in field[1] if column in transaction_fields]
+            is_transaction = [column for column in field[1]
+                              if column in transaction_fields]
             if is_transaction:
                 return Dataset.Transactions
 
@@ -498,7 +514,8 @@ def parse_columns_in_functions(col, context=None, index=None, dataset=Dataset.Ev
 
 
 def get_arrayjoin(column):
-    match = re.match(r"^(exception_stacks|exception_frames|contexts)\..+$", column)
+    match = re.match(
+        r"^(exception_stacks|exception_frames|contexts)\..+$", column)
     if match:
         return match.groups()[0]
 
@@ -573,7 +590,8 @@ def transform_aliases_and_query(skip_conditions=False, **kwargs):
         if isinstance(aggregation[1], six.string_types):
             aggregation[1] = get_snuba_column_name(aggregation[1], dataset)
         elif isinstance(aggregation[1], (set, tuple, list)):
-            aggregation[1] = [get_snuba_column_name(col, dataset) for col in aggregation[1]]
+            aggregation[1] = [get_snuba_column_name(
+                col, dataset) for col in aggregation[1]]
 
     if not skip_conditions:
         for col in filter_keys.keys():
@@ -616,7 +634,8 @@ def transform_aliases_and_query(skip_conditions=False, **kwargs):
             translated_orderby.append(
                 u"{}{}".format(
                     "-" if field_with_order.startswith("-") else "",
-                    field if field in derived_columns else get_snuba_column_name(field, dataset),
+                    field if field in derived_columns else get_snuba_column_name(
+                        field, dataset),
                 )
             )
 
@@ -683,7 +702,8 @@ def _prepare_query_params(query_params):
 
     # any project will do, as they should all be from the same organization
     project = Project.objects.get(pk=project_ids[0])
-    retention = quotas.get_event_retention(organization=Organization(project.organization_id))
+    retention = quotas.get_event_retention(
+        organization=Organization(project.organization_id))
     if retention:
         start = max(start, datetime.utcnow() - timedelta(days=retention))
         if start > end:
@@ -692,7 +712,8 @@ def _prepare_query_params(query_params):
     # if `shrink_time_window` pushed `start` after `end` it means the user queried
     # a Group for T1 to T2 when the group was only active for T3 to T4, so the query
     # wouldn't return any results anyway
-    new_start = shrink_time_window(query_params.filter_keys.get("issue"), start)
+    new_start = shrink_time_window(
+        query_params.filter_keys.get("issue"), start)
 
     # TODO (alexh) this is a quick emergency fix for an occasion where a search
     # results in only 1 django candidate, which is then passed to snuba to
@@ -717,7 +738,8 @@ def _prepare_query_params(query_params):
             "granularity": query_params.rollup,  # TODO name these things the same
         }
     )
-    kwargs = {k: v for k, v in six.iteritems(query_params.kwargs) if v is not None}
+    kwargs = {k: v for k, v in six.iteritems(
+        query_params.kwargs) if v is not None}
 
     kwargs.update(OVERRIDE_OPTIONS)
     return kwargs, forward, reverse
@@ -764,9 +786,12 @@ class SnubaQueryParams(object):
         is_grouprelease=False,
         **kwargs
     ):
+        if dataset is None:
+            raise SnubaError("Snuba dataset must be provided")
         # TODO: instead of having events be the default, make dataset required.
-        self.dataset = dataset or Dataset.Events
-        self.start = start or datetime.utcfromtimestamp(0)  # will be clamped to project retention
+        self.dataset = dataset
+        self.start = start or datetime.utcfromtimestamp(
+            0)  # will be clamped to project retention
         self.end = end or datetime.utcnow()
         self.groupby = groupby or []
         self.conditions = conditions or []
@@ -811,15 +836,17 @@ def raw_query(
 
 
 def bulk_raw_query(snuba_param_list, referrer=None):
+    print ("Snuba params:", snuba_param_list)
     headers = {}
     if referrer:
         headers["referer"] = referrer
 
     query_param_list = map(_prepare_query_params, snuba_param_list)
+    print ("query_param_list:", query_param_list)
 
     def snuba_query(params):
         query_params, forward, reverse = params
-        print("Sending POST with query params:",query_params)
+        print ("Sending POST with query params:", query_params)
         try:
             with timer("snuba_query"):
                 return (
@@ -832,7 +859,7 @@ def bulk_raw_query(snuba_param_list, referrer=None):
         except urllib3.exceptions.HTTPError as err:
             raise SnubaError(err)
 
-    print("query_param_list",query_param_list)
+    print ("query_param_list", query_param_list)
     if len(snuba_param_list) > 1:
         query_results = _query_thread_pool.map(snuba_query, query_param_list)
     else:
@@ -911,16 +938,19 @@ def query(
 
     # Validate and scrub response, and translate snuba keys back to IDs
     aggregate_names = [a[2] for a in aggregations]
-    selected_names = [c[2] if isinstance(c, (list, tuple)) else c for c in selected_columns]
+    selected_names = [c[2] if isinstance(
+        c, (list, tuple)) else c for c in selected_columns]
     expected_cols = set(groupby + aggregate_names + selected_names)
     got_cols = set(c["name"] for c in body["meta"])
 
-    assert expected_cols == got_cols, "expected {}, got {}".format(expected_cols, got_cols)
+    assert expected_cols == got_cols, "expected {}, got {}".format(
+        expected_cols, got_cols)
 
     with timer("process_result"):
         if totals:
             return (
-                nest_groups(body["data"], groupby, aggregate_names + selected_names),
+                nest_groups(body["data"], groupby,
+                            aggregate_names + selected_names),
                 body["totals"],
             )
         else:
@@ -1001,7 +1031,8 @@ def constrain_condition_to_dataset(cond, dataset):
         elif len(cond) == 2 and SAFE_FUNCTION_RE.match(cond[0]):
             # Function call with column name arguments.
             if isinstance(cond[1], list):
-                cond[1] = [constrain_column_to_dataset(item, dataset) for item in cond[1]]
+                cond[1] = [constrain_column_to_dataset(
+                    item, dataset) for item in cond[1]]
     return cond
 
 
@@ -1062,7 +1093,8 @@ def dataset_query(
             order_field = order.lstrip("-")
             if order_field not in derived_columns:
                 order_field = constrain_column_to_dataset(order_field, dataset)
-            orderby[i] = u"{}{}".format("-" if order.startswith("-") else "", order_field)
+            orderby[i] = u"{}{}".format(
+                "-" if order.startswith("-") else "", order_field)
 
     return raw_query(
         start=start,
@@ -1139,9 +1171,14 @@ def get_snuba_translators(filter_keys, is_grouprelease=False):
     """
 
     # Helper lambdas to compose translator functions
-    identity = lambda x: x
-    compose = lambda f, g: lambda x: f(g(x))
-    replace = lambda d, key, val: d.update({key: val}) or d
+    def identity(x):
+        return x
+
+    def compose(f, g):
+        return lambda x: f(g(x))
+
+    def replace(d, key, val):
+        return d.update({key: val}) or d
 
     forward = identity
     reverse = identity
@@ -1169,9 +1206,11 @@ def get_snuba_translators(filter_keys, is_grouprelease=False):
                 "id", "group_id", "release_id"
             )
             ver = dict(
-                Release.objects.filter(id__in=[x[2] for x in gr_map]).values_list("id", "version")
+                Release.objects.filter(
+                    id__in=[x[2] for x in gr_map]).values_list("id", "version")
             )
-            fwd_map = {gr: (group, ver[release]) for (gr, group, release) in gr_map}
+            fwd_map = {gr: (group, ver[release])
+                       for (gr, group, release) in gr_map}
             rev_map = dict(reversed(t) for t in six.iteritems(fwd_map))
             fwd = (
                 lambda col, trans: lambda filters: replace(
@@ -1199,7 +1238,8 @@ def get_snuba_translators(filter_keys, is_grouprelease=False):
                 )
             )(col, fwd_map)
             rev = (
-                lambda col, trans: lambda row: replace(row, col, trans[row[col]])
+                lambda col, trans: lambda row: replace(
+                    row, col, trans[row[col]])
                 if col in row
                 else row
             )(col, rev_map)
@@ -1212,7 +1252,8 @@ def get_snuba_translators(filter_keys, is_grouprelease=False):
     # Extra reverse translator for time column.
     reverse = compose(
         reverse,
-        lambda row: replace(row, "time", int(to_timestamp(parse_datetime(row["time"]))))
+        lambda row: replace(row, "time", int(
+            to_timestamp(parse_datetime(row["time"]))))
         if "time" in row
         else row,
     )
@@ -1220,7 +1261,8 @@ def get_snuba_translators(filter_keys, is_grouprelease=False):
     reverse = compose(
         reverse,
         lambda row: replace(
-            row, "bucketed_start", int(to_timestamp(parse_datetime(row["bucketed_start"])))
+            row, "bucketed_start", int(to_timestamp(
+                parse_datetime(row["bucketed_start"])))
         )
         if "bucketed_start" in row
         else row,
@@ -1260,7 +1302,8 @@ def shrink_time_window(issues, start):
     """
     if issues and len(issues) == 1:
         group = Group.objects.get(pk=list(issues)[0])
-        start = max(start, naiveify_datetime(group.first_seen) - timedelta(minutes=5))
+        start = max(start, naiveify_datetime(
+            group.first_seen) - timedelta(minutes=5))
 
     return start
 

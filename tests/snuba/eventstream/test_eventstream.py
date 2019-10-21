@@ -37,19 +37,22 @@ class SnubaEventStreamTest(TestCase, SnubaTestCase):
         # pass arguments on to Kafka EventManager
         self.kafka_eventstream.insert(*insert_args, **insert_kwargs)
 
-        produce_args, produce_kwargs = list(self.kafka_eventstream.producer.produce.call_args)
+        produce_args, produce_kwargs = list(
+            self.kafka_eventstream.producer.produce.call_args)
         assert not produce_args
         assert produce_kwargs["topic"] == "events"
         assert produce_kwargs["key"] == six.text_type(self.project.id)
 
-        version, type_, payload1, payload2 = json.loads(produce_kwargs["value"])
+        version, type_, payload1, payload2 = json.loads(
+            produce_kwargs["value"])
         assert version == 2
         assert type_ == "insert"
 
         # insert what would have been the Kafka payload directly
         # into Snuba, expect an HTTP 200 and for the event to now exist
         snuba_eventstream = SnubaEventStream()
-        snuba_eventstream._send(self.project.id, "insert", (payload1, payload2))
+        snuba_eventstream._send(
+            self.project.id, "insert", (payload1, payload2))
 
     @patch("sentry.eventstream.insert")
     @patch("sentry.tagstore.delay_index_event_tags")
@@ -106,11 +109,13 @@ class SnubaEventStreamTest(TestCase, SnubaTestCase):
 
         self.__produce_event(*insert_args, **insert_kwargs)
         result = snuba.raw_query(
+            dataset=snuba.Dataset.Events,
             start=now - timedelta(days=1),
             end=now + timedelta(days=1),
             selected_columns=["event_id", "group_id"],
             groupby=None,
-            filter_keys={"project_id": [self.project.id], "event_id": [event.event_id]},
+            filter_keys={"project_id": [
+                self.project.id], "event_id": [event.event_id]},
         )
         assert len(result["data"]) == 1
         assert result["data"][0]["group_id"] is None

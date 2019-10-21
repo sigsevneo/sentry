@@ -40,7 +40,14 @@ from sentry.snuba.subscriptions import (
     bulk_update_snuba_subscriptions,
 )
 from sentry.utils.committers import get_event_file_committers
-from sentry.utils.snuba import bulk_raw_query, raw_query, SnubaQueryParams, SnubaTSResult, zerofill
+from sentry.utils.snuba import (
+    bulk_raw_query,
+    raw_query,
+    SnubaQueryParams,
+    SnubaTSResult,
+    zerofill,
+    Dataset,
+)
 
 MAX_INITIAL_INCIDENT_PERIOD = timedelta(days=7)
 
@@ -93,11 +100,13 @@ def create_incident(
         )
         if projects:
             IncidentProject.objects.bulk_create(
-                [IncidentProject(incident=incident, project=project) for project in projects]
+                [IncidentProject(incident=incident, project=project)
+                 for project in projects]
             )
         if groups:
             IncidentGroup.objects.bulk_create(
-                [IncidentGroup(incident=incident, group=group) for group in groups]
+                [IncidentGroup(incident=incident, group=group)
+                 for group in groups]
             )
 
         if type == IncidentType.CREATED:
@@ -116,7 +125,8 @@ def create_incident(
             incident_type=type.value,
         )
 
-    tasks.calculate_incident_suspects.apply_async(kwargs={"incident_id": incident.id})
+    tasks.calculate_incident_suspects.apply_async(
+        kwargs={"incident_id": incident.id})
     return incident
 
 
@@ -146,7 +156,9 @@ def calculate_incident_start(query, projects, groups):
     rollup = int(INCIDENT_START_ROLLUP.total_seconds())
 
     result = raw_query(
-        aggregations=[("count()", "", "count"), ("min", "timestamp", "first_seen")],
+        dataset=snuba.Dataset.Events,
+        aggregations=[("count()", "", "count"),
+                      ("min", "timestamp", "first_seen")],
         orderby="time",
         groupby=["time"],
         rollup=rollup,
@@ -200,7 +212,8 @@ def calculate_incident_start(query, projects, groups):
             if cur_height > max_height:
                 # If we detect that we have a new highest peak, then set a new
                 # incident start date
-                incident_start = calculate_start(cur_spike_start, cur_spike_end)
+                incident_start = calculate_start(
+                    cur_spike_start, cur_spike_end)
                 max_height = cur_height
 
             cur_height = 0
@@ -291,7 +304,8 @@ def create_initial_event_stats_snapshot(incident):
     an incident. It's intended to capture the history of the events involved in
     the incident, the spike and a short period of time after that.
     """
-    initial_period_length = min(timezone.now() - incident.date_started, MAX_INITIAL_INCIDENT_PERIOD)
+    initial_period_length = min(
+        timezone.now() - incident.date_started, MAX_INITIAL_INCIDENT_PERIOD)
     end = incident.date_started + initial_period_length
     start = end - (initial_period_length * 4)
     return create_event_stat_snapshot(incident, start, end)
@@ -311,7 +325,8 @@ def create_incident_activity(
     if activity_type == IncidentActivityType.COMMENT and user:
         subscribe_to_incident(incident, user)
     value = six.text_type(value) if value is not None else value
-    previous_value = six.text_type(previous_value) if previous_value is not None else previous_value
+    previous_value = six.text_type(
+        previous_value) if previous_value is not None else previous_value
     activity = IncidentActivity.objects.create(
         incident=incident,
         type=activity_type.value,
@@ -331,7 +346,8 @@ def create_incident_activity(
         if user_ids_to_subscribe:
             IncidentSubscription.objects.bulk_create(
                 [
-                    IncidentSubscription(incident=incident, user_id=mentioned_user_id)
+                    IncidentSubscription(
+                        incident=incident, user_id=mentioned_user_id)
                     for mentioned_user_id in user_ids_to_subscribe
                 ]
             )
@@ -393,7 +409,8 @@ def create_event_stat_snapshot(incident, start, end):
     return TimeSeriesSnapshot.objects.create(
         start=start,
         end=end,
-        values=[[row["time"], row["count"]] for row in event_stats.data["data"]],
+        values=[[row["time"], row["count"]]
+                for row in event_stats.data["data"]],
         period=event_stats.rollup,
     )
 
@@ -446,13 +463,15 @@ def get_incident_event_stats(incident, start=None, end=None, data_points=50):
     Gets event stats for an incident. If start/end are provided, uses that time
     period, otherwise uses the incident start/current_end.
     """
-    query_params = bulk_build_incident_query_params([incident], start=start, end=end)
+    query_params = bulk_build_incident_query_params(
+        [incident], start=start, end=end)
     return bulk_get_incident_event_stats([incident], query_params, data_points=data_points)[0]
 
 
 def bulk_get_incident_event_stats(incidents, query_params_list, data_points=50):
     snuba_params_list = [
         SnubaQueryParams(
+            dataset=Dataset.Events,
             aggregations=[("count()", "", "count")],
             orderby="time",
             groupby=["time"],
@@ -462,9 +481,11 @@ def bulk_get_incident_event_stats(incidents, query_params_list, data_points=50):
         )
         for incident, query_param in zip(incidents, query_params_list)
     ]
-    results = bulk_raw_query(snuba_params_list, referrer="incidents.get_incident_event_stats")
+    results = bulk_raw_query(
+        snuba_params_list, referrer="incidents.get_incident_event_stats")
     return [
-        SnubaTSResult(result, snuba_params.start, snuba_params.end, snuba_params.rollup)
+        SnubaTSResult(result, snuba_params.start,
+                      snuba_params.end, snuba_params.rollup)
         for snuba_params, result in zip(snuba_params_list, results)
     ]
 
@@ -482,13 +503,16 @@ def get_incident_aggregates(incident):
 def bulk_get_incident_aggregates(query_params_list):
     snuba_params_list = [
         SnubaQueryParams(
-            aggregations=[("count()", "", "count"), ("uniq", "tags[sentry:user]", "unique_users")],
+            dataset=Dataset.Events,
+            aggregations=[("count()", "", "count"),
+                          ("uniq", "tags[sentry:user]", "unique_users")],
             limit=10000,
             **query_param
         )
         for query_param in query_params_list
     ]
-    results = bulk_raw_query(snuba_params_list, referrer="incidents.get_incident_aggregates")
+    results = bulk_raw_query(
+        snuba_params_list, referrer="incidents.get_incident_aggregates")
     return [result["data"][0] for result in results]
 
 
@@ -513,7 +537,8 @@ def bulk_get_incident_stats(incidents):
     to_fetch = [i for i in incidents if i.id not in incident_stats]
     if to_fetch:
         query_params_list = bulk_build_incident_query_params(to_fetch)
-        all_event_stats = bulk_get_incident_event_stats(to_fetch, query_params_list)
+        all_event_stats = bulk_get_incident_event_stats(
+            to_fetch, query_params_list)
         all_aggregates = bulk_get_incident_aggregates(query_params_list)
         for incident, event_stats, aggregates in zip(to_fetch, all_event_stats, all_aggregates):
             incident_stats[incident.id] = {
@@ -641,7 +666,8 @@ def create_alert_rule(
                 id__in=[p.id for p in excluded_projects]
             )
             exclusions = [
-                AlertRuleExcludedProjects(alert_rule=alert_rule, project=project)
+                AlertRuleExcludedProjects(
+                    alert_rule=alert_rule, project=project)
                 for project in excluded_projects
             ]
             AlertRuleExcludedProjects.objects.bulk_create(exclusions)
@@ -745,18 +771,23 @@ def update_alert_rule(
                 excluded_project_ids = (
                     {p.id for p in excluded_projects} if excluded_projects else set()
                 )
-                project_exclusions = get_excluded_projects_for_alert_rule(alert_rule)
-                project_exclusions.exclude(project_id__in=excluded_project_ids).delete()
-                existing_excluded_project_ids = {pe.project_id for pe in project_exclusions}
+                project_exclusions = get_excluded_projects_for_alert_rule(
+                    alert_rule)
+                project_exclusions.exclude(
+                    project_id__in=excluded_project_ids).delete()
+                existing_excluded_project_ids = {
+                    pe.project_id for pe in project_exclusions}
                 new_exclusions = [
-                    AlertRuleExcludedProjects(alert_rule=alert_rule, project_id=project_id)
+                    AlertRuleExcludedProjects(
+                        alert_rule=alert_rule, project_id=project_id)
                     for project_id in excluded_project_ids
                     if project_id not in existing_excluded_project_ids
                 ]
                 AlertRuleExcludedProjects.objects.bulk_create(new_exclusions)
 
                 new_projects = Project.objects.filter(organization=alert_rule.organization).exclude(
-                    id__in=set([sub.project_id for sub in existing_subs]) | excluded_project_ids
+                    id__in=set([sub.project_id for sub in existing_subs]
+                               ) | excluded_project_ids
                 )
                 # If we're subscribed to any of the excluded projects then we want to
                 # remove those subscriptions
@@ -764,7 +795,8 @@ def update_alert_rule(
                     sub for sub in existing_subs if sub.project_id in excluded_project_ids
                 ]
         elif projects is not None:
-            existing_project_slugs = {sub.project.slug for sub in existing_subs}
+            existing_project_slugs = {
+                sub.project.slug for sub in existing_subs}
             # Determine whether we've added any new projects as part of this update
             new_projects = [
                 project for project in projects if project.slug not in existing_project_slugs
@@ -817,7 +849,8 @@ def subscribe_projects_to_alert_rule(alert_rule, projects):
         alert_rule.resolution,
     )
     subscription_links = [
-        AlertRuleQuerySubscription(query_subscription=subscription, alert_rule=alert_rule)
+        AlertRuleQuerySubscription(
+            query_subscription=subscription, alert_rule=alert_rule)
         for subscription in subscriptions
     ]
     AlertRuleQuerySubscription.objects.bulk_create(subscription_links)
@@ -842,8 +875,10 @@ def delete_alert_rule(alert_rule):
             name=uuid4().get_hex(),
             status=AlertRuleStatus.PENDING_DELETION.value,
         )
-        bulk_delete_snuba_subscriptions(list(alert_rule.query_subscriptions.all()))
-    tasks.delete_alert_rule.apply_async(kwargs={"alert_rule_id": alert_rule.id})
+        bulk_delete_snuba_subscriptions(
+            list(alert_rule.query_subscriptions.all()))
+    tasks.delete_alert_rule.apply_async(
+        kwargs={"alert_rule_id": alert_rule.id})
 
 
 def validate_alert_rule_query(query):
@@ -892,7 +927,8 @@ def create_alert_rule_trigger(
 
     excluded_subs = []
     if excluded_projects:
-        excluded_subs = get_subscriptions_from_alert_rule(alert_rule, excluded_projects)
+        excluded_subs = get_subscriptions_from_alert_rule(
+            alert_rule, excluded_projects)
 
     with transaction.atomic():
         trigger = AlertRuleTrigger.objects.create(
@@ -904,7 +940,8 @@ def create_alert_rule_trigger(
         )
         if excluded_subs:
             new_exclusions = [
-                AlertRuleTriggerExclusion(alert_rule_trigger=trigger, query_subscription=sub)
+                AlertRuleTriggerExclusion(
+                    alert_rule_trigger=trigger, query_subscription=sub)
                 for sub in excluded_subs
             ]
             AlertRuleTriggerExclusion.objects.bulk_create(new_exclusions)
@@ -933,7 +970,8 @@ def update_alert_rule_trigger(
     """
 
     if (
-        AlertRuleTrigger.objects.filter(alert_rule=trigger.alert_rule, label=label)
+        AlertRuleTrigger.objects.filter(
+            alert_rule=trigger.alert_rule, label=label)
         .exclude(id=trigger.id)
         .exists()
     ):
@@ -955,26 +993,32 @@ def update_alert_rule_trigger(
     if excluded_projects:
         # We link projects to exclusions via QuerySubscriptions. Calculate which
         # exclusions need to be deleted, and which need to be created.
-        excluded_subs = get_subscriptions_from_alert_rule(trigger.alert_rule, excluded_projects)
-        existing_exclusions = AlertRuleTriggerExclusion.objects.filter(alert_rule_trigger=trigger)
+        excluded_subs = get_subscriptions_from_alert_rule(
+            trigger.alert_rule, excluded_projects)
+        existing_exclusions = AlertRuleTriggerExclusion.objects.filter(
+            alert_rule_trigger=trigger)
         new_sub_ids = {sub.id for sub in excluded_subs}
-        existing_sub_ids = {exclusion.query_subscription_id for exclusion in existing_exclusions}
+        existing_sub_ids = {
+            exclusion.query_subscription_id for exclusion in existing_exclusions}
 
         deleted_exclusion_ids = [
             e.id for e in existing_exclusions if e.query_subscription_id not in new_sub_ids
         ]
-        new_subs = [sub for sub in excluded_subs if sub.id not in existing_sub_ids]
+        new_subs = [
+            sub for sub in excluded_subs if sub.id not in existing_sub_ids]
 
     with transaction.atomic():
         if updated_fields:
             trigger.update(**updated_fields)
 
         if deleted_exclusion_ids:
-            AlertRuleTriggerExclusion.objects.filter(id__in=deleted_exclusion_ids).delete()
+            AlertRuleTriggerExclusion.objects.filter(
+                id__in=deleted_exclusion_ids).delete()
 
         if new_subs:
             new_exclusions = [
-                AlertRuleTriggerExclusion(alert_rule_trigger=trigger, query_subscription=sub)
+                AlertRuleTriggerExclusion(
+                    alert_rule_trigger=trigger, query_subscription=sub)
                 for sub in new_subs
             ]
             AlertRuleTriggerExclusion.objects.bulk_create(new_exclusions)
@@ -1002,7 +1046,8 @@ def get_subscriptions_from_alert_rule(alert_rule, projects):
     :param projects: The Project we want subscriptions for
     :return: A list of QuerySubscriptions
     """
-    excluded_subscriptions = alert_rule.query_subscriptions.filter(project__in=projects)
+    excluded_subscriptions = alert_rule.query_subscriptions.filter(
+        project__in=projects)
     if len(excluded_subscriptions) != len(projects):
         invalid_slugs = set([p.slug for p in projects]) - set(
             [s.project.slug for s in excluded_subscriptions]

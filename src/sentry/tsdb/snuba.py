@@ -74,7 +74,8 @@ class SnubaTSDB(BaseTSDB):
             model_aggregate = None
 
         keys_map = dict(zip(model_columns, self.flatten_keys(keys)))
-        keys_map = {k: v for k, v in six.iteritems(keys_map) if k is not None and v is not None}
+        keys_map = {k: v for k, v in six.iteritems(
+            keys_map) if k is not None and v is not None}
         if environment_ids is not None:
             keys_map["environment"] = environment_ids
 
@@ -86,10 +87,12 @@ class SnubaTSDB(BaseTSDB):
         rollup, series = self.get_optimal_rollup_series(start, end, rollup)
         start = to_datetime(series[0])
         end = to_datetime(series[-1] + rollup)
-        limit = min(10000, int(len(keys) * ((end - start).total_seconds() / rollup)))
+        limit = min(10000, int(
+            len(keys) * ((end - start).total_seconds() / rollup)))
 
         if keys:
             result = snuba.query(
+                dataset=snuba.Dataset.Events,
                 start=start,
                 end=end,
                 groupby=groupby,
@@ -99,7 +102,8 @@ class SnubaTSDB(BaseTSDB):
                 rollup=rollup,
                 limit=limit,
                 referrer="tsdb",
-                is_grouprelease=(model == TSDBModel.frequent_releases_by_group),
+                is_grouprelease=(
+                    model == TSDBModel.frequent_releases_by_group),
             )
         else:
             result = {}
@@ -230,7 +234,8 @@ class SnubaTSDB(BaseTSDB):
         # into
         #    {group: [(top1, score), ...]}
         for k, top in six.iteritems(result):
-            item_scores = [(v, float(i + 1)) for i, v in enumerate(reversed(top or []))]
+            item_scores = [(v, float(i + 1))
+                           for i, v in enumerate(reversed(top or []))]
             result[k] = list(reversed(item_scores))
 
         return result
@@ -256,7 +261,8 @@ class SnubaTSDB(BaseTSDB):
         for k in result:
             result[k] = sorted(
                 [
-                    (timestamp, {v: float(i + 1) for i, v in enumerate(reversed(topk or []))})
+                    (timestamp, {v: float(i + 1)
+                                 for i, v in enumerate(reversed(topk or []))})
                     for (timestamp, topk) in result[k].items()
                 ]
             )
@@ -301,7 +307,8 @@ class SnubaTSDB(BaseTSDB):
         if isinstance(items, collections.Mapping):
             return (
                 items.keys(),
-                list(set.union(*(set(v) for v in items.values())) if items else []),
+                list(set.union(*(set(v)
+                                 for v in items.values())) if items else []),
             )
         elif isinstance(items, (collections.Sequence, collections.Set)):
             return (items, None)

@@ -102,27 +102,33 @@ class BulkRawQueryTest(TestCase, SnubaTestCase):
     def test_simple(self):
         one_min_ago = iso_format(before_now(minutes=1))
         event_1 = self.store_event(
-            data={"fingerprint": ["group-1"], "message": "hello", "timestamp": one_min_ago},
+            data={"fingerprint": ["group-1"],
+                  "message": "hello", "timestamp": one_min_ago},
             project_id=self.project.id,
         )
         event_2 = self.store_event(
-            data={"fingerprint": ["group-2"], "message": "hello", "timestamp": one_min_ago},
+            data={"fingerprint": ["group-2"],
+                  "message": "hello", "timestamp": one_min_ago},
             project_id=self.project.id,
         )
 
         results = snuba.bulk_raw_query(
             [
                 snuba.SnubaQueryParams(
+                    dataset=snuba.Dataset.Events,
                     start=timezone.now() - timedelta(days=1),
                     end=timezone.now(),
                     selected_columns=["event_id", "issue", "timestamp"],
-                    filter_keys={"project_id": [self.project.id], "issue": [event_1.group.id]},
+                    filter_keys={"project_id": [
+                        self.project.id], "issue": [event_1.group.id]},
                 ),
                 snuba.SnubaQueryParams(
+                    dataset=snuba.Dataset.Events,
                     start=timezone.now() - timedelta(days=1),
                     end=timezone.now(),
                     selected_columns=["event_id", "issue", "timestamp"],
-                    filter_keys={"project_id": [self.project.id], "issue": [event_2.group.id]},
+                    filter_keys={"project_id": [
+                        self.project.id], "issue": [event_2.group.id]},
                 ),
             ]
         )

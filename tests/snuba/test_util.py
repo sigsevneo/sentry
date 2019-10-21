@@ -30,13 +30,16 @@ class SnubaUtilTest(TestCase, SnubaTestCase):
         group1.first_seen = now - timedelta(hours=1)
         group1.last_seen = now
         group1.save()
-        GroupHash.objects.create(project_id=group1.project_id, group=group1, hash="a" * 32)
+        GroupHash.objects.create(
+            project_id=group1.project_id, group=group1, hash="a" * 32)
 
         group2 = self.create_group()
-        GroupHash.objects.create(project_id=group2.project_id, group=group2, hash="b" * 32)
+        GroupHash.objects.create(
+            project_id=group2.project_id, group=group2, hash="b" * 32)
 
         issues = [group1.id]
-        assert snuba.shrink_time_window(issues, year_ago) == now - timedelta(hours=1, minutes=5)
+        assert snuba.shrink_time_window(
+            issues, year_ago) == now - timedelta(hours=1, minutes=5)
 
         issues = [group1.id, group2.id]
         assert snuba.shrink_time_window(issues, year_ago) == year_ago
@@ -44,6 +47,7 @@ class SnubaUtilTest(TestCase, SnubaTestCase):
         # with pytest.raises(snuba.QueryOutsideGroupActivityError):
         #    # query a group for a time range before it had any activity
         #    snuba.raw_query(
+        #        dataset=snuba.Dataset.Events,
         #        start=group1.first_seen - timedelta(days=1, hours=1),
         #        end=group1.first_seen - timedelta(days=1),
         #        filter_keys={
@@ -60,7 +64,8 @@ class SnubaUtilTest(TestCase, SnubaTestCase):
         with snuba.options_override({"foo": 1}):
             assert snuba.OVERRIDE_OPTIONS == {"foo": 1, "consistent": False}
             with snuba.options_override({"foo": 2}):
-                assert snuba.OVERRIDE_OPTIONS == {"foo": 2, "consistent": False}
+                assert snuba.OVERRIDE_OPTIONS == {
+                    "foo": 2, "consistent": False}
             assert snuba.OVERRIDE_OPTIONS == {"foo": 1, "consistent": False}
         assert snuba.OVERRIDE_OPTIONS == {"consistent": False}
 
@@ -74,5 +79,7 @@ class SnubaUtilTest(TestCase, SnubaTestCase):
         extra_fields = ["issue_count", "event_count"]
         assert snuba.valid_orderby(["issue_count", "-timestamp"], extra_fields)
         assert snuba.valid_orderby("issue_count", extra_fields)
-        assert not snuba.valid_orderby(["invalid", "issue_count"], extra_fields)
-        assert not snuba.valid_orderby(["issue_count", "invalid"], extra_fields)
+        assert not snuba.valid_orderby(
+            ["invalid", "issue_count"], extra_fields)
+        assert not snuba.valid_orderby(
+            ["issue_count", "invalid"], extra_fields)
